@@ -1,0 +1,13 @@
+# Entorno virtual
+.venv/
+
+# Binarios de Hadoop para Windows (el notebook los descarga automáticamente en la sección 1.2)
+hadoop/
+
+# Archivos temporales de Jupyter y Python
+.ipynb_checkpoints/
+__pycache__/
+
+# Respaldos locales
+respaldo*.ipynb
+borrador*.ipynb
