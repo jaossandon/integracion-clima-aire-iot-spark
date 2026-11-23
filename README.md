@@ -1,12 +1,12 @@
-# MCDI502 · Sumativa 3 · Taller II: Integración de fuentes heterogéneas con Apache Spark
+# Integración de fuentes heterogéneas con Apache Spark: clima, calidad del aire y sensores IoT
 
-**Curso:** Gestión de Datos y Tecnologías Big Data (MCDI502)
+Flujo de integración de datos con Apache Spark (PySpark) a partir de cuatro fuentes de naturaleza distinta: dos API REST públicas, una base de datos documental en la nube y una base relacional expuesta mediante una API en PHP. Cada fuente se carga en un DataFrame de 100 registros con esquema explícito, se valida y transforma, y se integra en un DataFrame unificado sobre el cual se ejecutan consultas con Spark SQL.
 
-**Grupo 6:** Fernanda Ovalle Román, Sebastián Cajales Cid, César Lorca Bacián, Jorge Álvarez Ossandón
+**Autor:** Jorge Álvarez Ossandón
 
-## Descripción
+---
 
-Este repositorio contiene el notebook del Taller II, en el que se construye un flujo de integración de datos con Apache Spark (PySpark) a partir de cuatro fuentes heterogéneas. Cada fuente se carga en un DataFrame de 100 registros, se valida y transforma, y se integra en un DataFrame unificado, sobre el cual se ejecutan consultas con Spark SQL.
+## Fuentes de datos
 
 | Fuente | Tipo | Variables | DataFrame |
 |---|---|---|---|
@@ -17,54 +17,58 @@ Este repositorio contiene el notebook del Taller II, en el que se construye un f
 
 La ubicación de análisis es Santiago de Chile (latitud -33,4489; longitud -70,6693).
 
-## Contenido del repositorio
+## Hallazgos principales
 
-| Archivo | Descripción |
+| Tema | Resultado |
 |---|---|
-| `mcdi502_s3_grupo6.ipynb` | Notebook completo, con los resultados de la ejecución del 14 de noviembre de 2026 |
-| `.gitignore` | Excluye el entorno virtual, los binarios de Hadoop y los archivos temporales |
+| Integración | Las cuatro fuentes no comparten ninguna hora en común: un join temporal de las cuatro habría producido un DataFrame vacío. La estrategia se derivó del diagnóstico de los datos y no se fijó de antemano. |
+| Telemetría IoT | MongoDB y MySQL registran el mismo dispositivo ESP32, con un desfase horario constante de cinco horas en MySQL. Tras corregirlo, ambas fuentes se unen por el instante de lectura (tolerancia de 8 segundos), con 100 de 100 lecturas emparejadas. |
+| Validación | Se verificó el número de filas después de cada join, la unicidad de las claves y la ausencia de emparejamientos duplicados. `df_unificado` conserva 100 filas y 32 columnas, sin nulos introducidos por la integración. |
+| Calidad de las fuentes | Dos de las seis estaciones de AQICN en Santiago informaban como "última medición" datos de 2021 y 2022; se aplicó un filtro de vigencia de 30 días para no mezclar mediciones de distintos años. |
+| Resultados | La serie meteorológica muestra el ciclo diario típico de la primavera en Santiago, con relación inversa entre temperatura y humedad. La calidad del aire se ubica en el rango "bueno" del AQI, con el material particulado como principal contaminante. |
 
-## Estructura del notebook
+## Competencias y métodos
 
-1. **Configuración del entorno:** librerías, Java, componente Hadoop para Windows, `SparkSession` y `SparkContext` con los conectores de MongoDB y MySQL, y parámetros de conexión.
-2. **Ingesta de datos:** creación de los cuatro DataFrames con esquemas explícitos (`StructType`).
-3. **Preprocesamiento:** validación de rangos físicos y duplicados, columna `altura_metros` ($h_m = h_{ft} \times 0{,}3048$) y columna `condicion_clima`.
-4. **Integración:** diagnóstico temporal y construcción de `df_unificado` con una estrategia híbrida.
-5. **Consultas con Spark SQL:** vistas temporales y consultas C1 a C7.
-6. **Conclusiones:** síntesis, tabla de decisiones técnicas y limitaciones.
+| Área | Métodos y herramientas |
+|---|---|
+| Ingesta | Consumo de API REST con `requests`, conector oficial de MongoDB para Spark (serie 10.x, Scala 2.13), pipeline de agregación con ordenamiento y límite en el servidor (*pushdown*), respaldo con `pymongo`. |
+| DataFrames | Esquemas explícitos (`StructType`), validación de rangos físicos y duplicados, columnas calculadas con `when` / `otherwise`, conversión de unidades ($h_m = h_{ft} \times 0{,}3048$). |
+| Integración | Diagnóstico temporal entre fuentes, join por instante más cercano con tolerancia, clave de índice cronológico, prefijos por fuente, validación de conteos tras cada join. |
+| Spark SQL | Vistas temporales, siete consultas sobre fuentes individuales y sobre el DataFrame unificado, verificación cruzada API de DataFrames = SQL. |
+| Entorno | PySpark 4.0.1, Java 17, Python 3.11 en Windows, componentes de Hadoop para Windows, DNS sobre HTTPS para resolver la URI de MongoDB en redes con DNS bloqueado, materialización con `localCheckpoint` ante fuentes en tiempo real. |
 
-## Estrategia de integración
+## Contenido del notebook
 
-El diagnóstico temporal mostró que las cuatro fuentes no comparten ninguna hora en común, por lo que un join temporal de las cuatro produciría un DataFrame vacío. Se adoptó una estrategia híbrida:
+| Sección | Contenido |
+|---|---|
+| 1 | Configuración del entorno: librerías, Java, Hadoop para Windows, `SparkSession` con los conectores de MongoDB y MySQL, parámetros de conexión |
+| 2 | Ingesta de datos: los cuatro DataFrames con esquemas explícitos |
+| 3 | Preprocesamiento: validación de rangos físicos y duplicados, `altura_metros` y `condicion_clima` |
+| 4 | Integración: diagnóstico temporal y construcción de `df_unificado` con estrategia híbrida |
+| 5 | Consultas con Spark SQL (C1 a C7) |
+| 6 | Conclusiones, decisiones técnicas y limitaciones |
 
-- **MongoDB y MySQL** registran las lecturas del mismo dispositivo ESP32, con un desfase horario constante de cinco horas en MySQL. Tras corregir el desfase, ambas fuentes se unen por el instante de lectura (tolerancia de 8 segundos), con 100 de 100 lecturas emparejadas.
-- **OpenMeteo y AQICN** se incorporan mediante un índice cronológico (1 a 100), porque no tienen superposición temporal con la telemetría del ESP32.
+## Estructura del repositorio
 
-El número de filas se valida después de cada join. `df_unificado` contiene 100 filas y 32 columnas, con prefijos por fuente (`om_`, `aq_`, `mg_`, `my_`).
+```
+integracion_clima_aire_iot.ipynb   notebook completo, con los resultados de la ejecución del 14 de noviembre de 2026
+.gitignore                         excluye el entorno virtual, los binarios de Hadoop y los archivos temporales
+```
 
-## Requisitos
+## Cómo reproducir
 
-- Windows 10 u 11
-- Python 3.11 (las versiones 3.12 o superiores provocan fallas en los procesos de PySpark en Windows)
-- Java 17 (por ejemplo, Eclipse Temurin)
-- Conexión a internet (las cuatro fuentes se consultan en línea)
+Requisitos: Windows 10 u 11, Python 3.11 (las versiones 3.12 o superiores provocan fallas en los procesos de PySpark en Windows), Java 17 y conexión a internet.
 
-## Ejecución
+```
+git clone https://github.com/jaossandon/integracion-clima-aire-iot-spark.git
+cd integracion-clima-aire-iot-spark
+py -3.11 -m venv .venv
+```
 
-1. Clonar el repositorio y crear el entorno virtual:
-
-   ```
-   git clone https://github.com/jaossandon/mcdi502-s3-spark.git
-   cd mcdi502-s3-spark
-   py -3.11 -m venv .venv
-   ```
-
-2. Abrir el notebook en VS Code o Jupyter, seleccionar el kernel de `.venv` y ejecutar todas las celdas (Run All). La primera celda instala las librerías necesarias (`pyspark==4.0.1`, `requests`, `pymongo`, `mysql-connector-python`) y la sección 1.2 descarga automáticamente los componentes de Hadoop para Windows.
-
-3. Si Java 17 está instalado en otra ruta, actualizar la variable `JAVA_HOME` en la celda de la sección 1.2.
+Abrir el notebook en VS Code o Jupyter, seleccionar el kernel de `.venv` y ejecutar todas las celdas. La primera celda instala las librerías necesarias (`pyspark==4.0.1`, `requests`, `pymongo`, `mysql-connector-python`) y la sección 1.2 descarga automáticamente los componentes de Hadoop para Windows. Si Java 17 está instalado en otra ruta, actualizar `JAVA_HOME` en la sección 1.2.
 
 ## Consideraciones
 
-- **Datos en tiempo real:** como las fuentes se consultan en el momento de la ejecución, los valores cambian en cada ejecución. Las interpretaciones del notebook corresponden a los resultados guardados de la ejecución del 14 de noviembre de 2026. La metodología, las transformaciones y las validaciones son reproducibles en cualquier ejecución.
-- **AQICN:** durante el desarrollo del trabajo, la última medición disponible de las estaciones de Santiago correspondía al 9 de noviembre de 2026, debido a una interrupción en la sincronización entre la red SINCA y AQICN.
+- **Datos en tiempo real:** las fuentes se consultan en el momento de la ejecución, por lo que los valores cambian en cada ejecución. Las interpretaciones del notebook corresponden a los resultados guardados de la ejecución del 14 de noviembre de 2026; la metodología, las transformaciones y las validaciones son reproducibles en cualquier ejecución.
+- **AQICN:** durante el período analizado, la última medición disponible de las estaciones de Santiago correspondía al 9 de noviembre de 2026, por una interrupción en la sincronización entre la red SINCA y AQICN.
 - **Token de AQICN:** el notebook incluye un token gratuito de solo lectura, para que pueda ejecutarse sin configuración adicional.
